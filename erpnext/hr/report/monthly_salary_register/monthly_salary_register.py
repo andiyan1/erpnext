@@ -1,4 +1,4 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # License: GNU General Public License v3. See license.txt
 
 from __future__ import unicode_literals
@@ -36,18 +36,18 @@ def execute(filters=None):
 	
 def get_columns(salary_slips):
 	columns = [
-		"Employee:Link/Employee:120", "Employee Name::140", "Branch:Link/Branch:120", 
-		"Department:Link/Department:120", "Designation:Link/Designation:120",
-		 "Company:Link/Company:120", "Month::80", "Leave Without pay:Float:130", 
-		"Payment Days:Float:120"
+		_("Employee") + ":Link/Employee:120", _("Employee Name") + "::140", _("Branch") + ":Link/Branch:120", 
+		_("Department") + ":Link/Department:120", _("Designation") + ":Link/Designation:120",
+		 _("Company") + ":Link/Company:120", _("Month") + "::80", _("Leave Without Pay") + ":Float:130", 
+		_("Payment Days") + ":Float:120"
 	]
 	
 	earning_types = frappe.db.sql_list("""select distinct e_type from `tabSalary Slip Earning`
-		where ifnull(e_modified_amount, 0) != 0 and parent in (%s)""" % 
+		where e_modified_amount != 0 and parent in (%s)""" % 
 		(', '.join(['%s']*len(salary_slips))), tuple([d.name for d in salary_slips]))
 		
 	ded_types = frappe.db.sql_list("""select distinct d_type from `tabSalary Slip Deduction`
-		where ifnull(d_modified_amount, 0) != 0 and parent in (%s)""" % 
+		where d_modified_amount != 0 and parent in (%s)""" % 
 		(', '.join(['%s']*len(salary_slips))), tuple([d.name for d in salary_slips]))
 		
 	columns = columns + [(e + ":Currency:120") for e in earning_types] + \

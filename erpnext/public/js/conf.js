@@ -1,4 +1,4 @@
-// Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+// Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 // License: GNU General Public License v3. See license.txt
 
 frappe.provide('erpnext');
@@ -7,34 +7,33 @@ frappe.provide('erpnext');
 $(document).bind('toolbar_setup', function() {
 	frappe.app.name = "ERPNext";
 
-	$('.navbar-brand').html('<i class="icon-home"></i>')
-	.attr("title", "Home")
-	.addClass("navbar-icon-home")
-	.css({
-		"max-width": "200px",
-		"text-overflow": "ellipsis",
-		"white-space": "nowrap"
-	});
+	frappe.help_feedback_link = '<p><a class="text-muted" \
+		href="https://discuss.erpnext.com">Feedback</a></p>'
+
+
+	$('.navbar-home').html('<img class="erpnext-icon" src="'+
+			frappe.urllib.get_base_url()+'/assets/erpnext/images/erp-icon.svg" />');
+
+	$('[data-link="docs"]').attr("href", "https://manual.erpnext.com")
 });
 
-frappe.provide('frappe.ui.misc');
-frappe.ui.misc.about = function() {
-	if(!frappe.ui.misc.about_dialog) {
-		var d = new frappe.ui.Dialog({title: __('About')})
+// doctypes created via tree
+$.extend(frappe.create_routes, {
+	"Customer Group": "Sales Browser/Customer Group",
+	"Territory": "Sales Browser/Territory",
+	"Item Group": "Sales Browser/Item Group",
+	"Sales Person": "Sales Browser/Sales Person",
+	"Account": "Accounts Browser/Account",
+	"Cost Center": "Accounts Browser/Cost Center"
+});
 
-		$(d.body).html(repl("<div>\
-		<h2>ERPNext</h2>  \
-		<h4 class='text-muted'>"+__("Built on") + " Frappe Framework"+"</h4>  \
-		<p>"+__("Open source ERP built for the web") + "</p>" +
-		"<p>"+__("To report an issue, go to ")+"<a href='https://github.com/frappe/erpnext/issues'>GitHub Issues</a></p> \
-		<p><a href='http://erpnext.org' target='_blank'>http://erpnext.org</a>.</p>\
-		<p><a href='http://www.gnu.org/copyleft/gpl.html'>License: GNU General Public License Version 3</a></p>\
-		<hr>\
-		<p>&copy; 2014 Web Notes Technologies Pvt. Ltd and contributers </p> \
-		</div>", frappe.app));
-
-		frappe.ui.misc.about_dialog = d;
-	}
-
-	frappe.ui.misc.about_dialog.show();
-}
+// preferred modules for breadcrumbs
+$.extend(frappe.breadcrumbs.preferred, {
+	"Item Group": "Stock",
+	"Customer Group": "Selling",
+	"Supplier Type": "Buying",
+	"Territory": "Selling",
+	"Sales Person": "Selling",
+	"Sales Partner": "Selling",
+	"Brand": "Selling"
+});

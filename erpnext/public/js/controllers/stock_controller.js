@@ -1,13 +1,27 @@
-// Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+// Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 // License: GNU General Public License v3. See license.txt
 
 frappe.provide("erpnext.stock");
 
 erpnext.stock.StockController = frappe.ui.form.Controller.extend({
+	onload: function() {
+		// warehouse query if company
+		if (this.frm.fields_dict.company) {
+			this.setup_warehouse_query();
+		}
+	},
+
+	setup_warehouse_query: function() {
+		var me = this;
+		erpnext.queries.setup_queries(this.frm, "Warehouse", function() {
+			return erpnext.queries.warehouse(me.frm.doc);
+		});
+	},
+
 	show_stock_ledger: function() {
 		var me = this;
 		if(this.frm.doc.docstatus===1) {
-			this.frm.appframe.add_button(__("Stock Ledger"), function() {
+			cur_frm.add_custom_button(__("Stock Ledger"), function() {
 				frappe.route_options = {
 					voucher_no: me.frm.doc.name,
 					from_date: me.frm.doc.posting_date,
@@ -15,15 +29,15 @@ erpnext.stock.StockController = frappe.ui.form.Controller.extend({
 					company: me.frm.doc.company
 				};
 				frappe.set_route("query-report", "Stock Ledger");
-			}, "icon-bar-chart");
+			}, __("View"));
 		}
-		
+
 	},
 
 	show_general_ledger: function() {
 		var me = this;
-		if(this.frm.doc.docstatus===1 && cint(frappe.defaults.get_default("auto_accounting_for_stock"))) { 
-			cur_frm.appframe.add_button(__('Accounting Ledger'), function() {
+		if(this.frm.doc.docstatus===1) {
+			cur_frm.add_custom_button(__('Accounting Ledger'), function() {
 				frappe.route_options = {
 					voucher_no: me.frm.doc.name,
 					from_date: me.frm.doc.posting_date,
@@ -32,18 +46,7 @@ erpnext.stock.StockController = frappe.ui.form.Controller.extend({
 					group_by_voucher: false
 				};
 				frappe.set_route("query-report", "General Ledger");
-			}, "icon-table");
+			}, __("View"));
 		}
-	},
-
-	copy_account_in_all_row: function(doc, dt, dn, fieldname) {
-		var d = locals[dt][dn];
-		if(d[fieldname]){
-			var cl = doc[this.frm.cscript.fname] || [];
-			for(var i = 0; i < cl.length; i++) {
-				if(!cl[i][fieldname]) cl[i][fieldname] = d[fieldname];
-			}
-		}
-		refresh_field(this.frm.cscript.fname);
 	}
 });

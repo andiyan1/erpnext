@@ -1,19 +1,88 @@
-// Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+// Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 // License: GNU General Public License v3. See license.txt
+
+frappe.provide("erpnext.company");
+
+frappe.ui.form.on("Company", {
+	onload: function(frm) {
+		erpnext.company.setup_queries(frm);
+	}, 
+	
+	onload_post_render: function(frm) {
+		frm.get_field("delete_company_transactions").$input.addClass("btn-danger");
+	},
+	country: function(frm) {
+		erpnext.company.set_chart_of_accounts_options(frm.doc);
+	},
+	delete_company_transactions: function(frm) {
+		frappe.verify_password(function() {
+			var d = frappe.prompt({
+				fieldtype:"Data",
+				fieldname: "company_name",
+				label: __("Please re-type company name to confirm"),
+				reqd: 1,
+				description: __("Please make sure you really want to delete all the transactions for this company. Your master data will remain as it is. This action cannot be undone.")},
+					function(data) {
+						if(data.company_name !== frm.doc.name) {
+							frappe.msgprint("Company name not same");
+							return;
+						}
+						frappe.call({
+							method: "erpnext.setup.doctype.company.delete_company_transactions.delete_company_transactions",
+							args: {
+								company_name: data.company_name
+							},
+							freeze: true,
+							callback: function(r, rt) {
+								if(!r.exc)
+									frappe.msgprint(__("Successfully deleted all transactions related to this company!"));
+							},
+							onerror: function() {
+								frappe.msgprint(__("Wrong Password"));
+							}
+						});
+					}, __("Delete all the Transactions for this Company"), __("Delete")
+				);
+				d.get_primary_btn().addClass("btn-danger");
+			}
+		);
+	}
+});
+
 
 cur_frm.cscript.refresh = function(doc, cdt, cdn) {
 	if(doc.abbr && !doc.__islocal) {
 		cur_frm.set_df_property("abbr", "read_only", 1);
-		if(in_list(user_roles, "System Manager"))
-			cur_frm.add_custom_button("Replace Abbreviation", cur_frm.cscript.replace_abbr)
 	}
 
 	if(!doc.__islocal) {
-		cur_frm.toggle_enable("default_currency", !cur_frm.doc.__transactions_exist);
+		cur_frm.toggle_enable("default_currency", (cur_frm.doc.__onload &&
+			!cur_frm.doc.__onload.transactions_exist));
+	}
+
+	erpnext.company.set_chart_of_accounts_options(doc);
+}
+
+erpnext.company.set_chart_of_accounts_options = function(doc) {
+	var selected_value = doc.chart_of_accounts;
+	if(doc.country) {
+		return frappe.call({
+			method: "erpnext.accounts.doctype.account.chart_of_accounts.chart_of_accounts.get_charts_for_country",
+			args: {
+				"country": doc.country,
+			},
+			callback: function(r) {
+				if(!r.exc) {
+					set_field_options("chart_of_accounts", [""].concat(r.message).join("\n"));
+					if(in_list(r.message, selected_value))
+						cur_frm.set_value("chart_of_accounts", selected_value);
+				}
+			}
+		})
 	}
 }
 
-cur_frm.cscript.replace_abbr = function() {
+cur_frm.cscript.change_abbr = function() {
 	var dialog = new frappe.ui.Dialog({
 		title: "Replace Abbr",
 		fields: [
@@ -49,114 +118,43 @@ cur_frm.cscript.replace_abbr = function() {
 	dialog.show();
 }
 
-cur_frm.cscript.has_special_chars = function(t) {
-  var iChars = "!@#$%^*+=-[]\\\';,/{}|\":<>?";
-  for (var i = 0; i < t.length; i++) {
-    if (iChars.indexOf(t.charAt(i)) != -1) {
-      return true;
-    }
-  }
-  return false;
-}
-
-cur_frm.cscript.company_name = function(doc){
-	if(doc.company_name && cur_frm.cscript.has_special_chars(doc.company_name)){
-		msgprint(__("Special Characters not allowed in Company Name"));
-		doc.company_name = '';
-		refresh_field('company_name');
+erpnext.company.setup_queries = function(frm) {
+	$.each([
+		["default_bank_account", {"account_type": "Bank"}], 
+		["default_cash_account", {"account_type": "Cash"}], 
+		["default_receivable_account", {"account_type": "Receivable"}], 
+		["default_payable_account", {"account_type": "Payable"}], 
+		["default_expense_account", {"root_type": "Expense"}], 
+		["default_income_account", {"root_type": "Income"}], 
+		["round_off_account", {"root_type": "Expense"}],
+		["cost_center", {}],
+		["round_off_cost_center", {}]
+	], function(i, v) {
+		erpnext.company.set_custom_query(frm, v);
+	});
+	
+	if (sys_defaults.auto_accounting_for_stock) {
+		$.each([
+			["stock_adjustment_account", {"root_type": "Expense"}], 
+			["expenses_included_in_valuation", {"root_type": "Expense"}],
+			["stock_received_but_not_billed", {"report_type": "Balance Sheet"}]
+		], function(i, v) {
+			erpnext.company.set_custom_query(frm, v);
+		});
 	}
 }
 
-cur_frm.cscript.abbr = function(doc){
-	if(doc.abbr && cur_frm.cscript.has_special_chars(doc.abbr)){
-		msgprint(__("Special Characters not allowed in Abbreviation"));
-		doc.abbr = '';
-		refresh_field('abbr');
-	}
-}
+erpnext.company.set_custom_query = function(frm, v) {
+	var filters = {
+		"company": frm.doc.name,
+		"is_group": 0
+	};
+	for (var key in v[1]) 
+		filters[key] = v[1][key];
 
-cur_frm.fields_dict.default_bank_account.get_query = function(doc) {
-	return{
-		filters: [
-			['Account', 'account_type', 'in', 'Bank, Cash'],
-			['Account', 'group_or_ledger', '=', 'Ledger'],
-			['Account', 'company', '=', doc.name]
-		]
-	}
-}
-
-cur_frm.fields_dict.default_cash_account.get_query = cur_frm.fields_dict.default_bank_account.get_query;
-
-cur_frm.fields_dict.receivables_group.get_query = function(doc) {
-	return{
-		filters:{
-			'company': doc.name,
-			'group_or_ledger': "Group"
-		}
-	}
-}
-
-cur_frm.get_field("chart_of_accounts").get_query = function(doc) {
-	return {
-		filters: {
-			"country": doc.country
-		}
-	}
-}
-
-cur_frm.fields_dict.payables_group.get_query = cur_frm.fields_dict.receivables_group.get_query;
-
-
-cur_frm.fields_dict.default_expense_account.get_query = function(doc) {
-	return{
-		filters:{
-			'company': doc.name,
-			'group_or_ledger': "Ledger",
-			"report_type": "Profit and Loss"
-		}
-	}
-}
-
-cur_frm.fields_dict.default_income_account.get_query = function(doc) {
-	return{
-		filters:{
-			'company': doc.name,
-			'group_or_ledger': "Ledger",
-			"report_type": "Profit and Loss"
-		}
-	}
-}
-
-cur_frm.fields_dict.cost_center.get_query = function(doc) {
-	return{
-		filters:{
-			'company': doc.name,
-			'group_or_ledger': "Ledger",
-		}
-	}
-}
-
-if (sys_defaults.auto_accounting_for_stock) {
-	cur_frm.fields_dict["stock_adjustment_account"].get_query = function(doc) {
+	frm.set_query(v[0], function() {
 		return {
-			"filters": {
-				"report_type": "Profit and Loss",
-				"company": doc.name,
-				'group_or_ledger': "Ledger"
-			}
-		}
-	}
-
-	cur_frm.fields_dict["expenses_included_in_valuation"].get_query =
-		cur_frm.fields_dict["stock_adjustment_account"].get_query;
-
-	cur_frm.fields_dict["stock_received_but_not_billed"].get_query = function(doc) {
-		return {
-			"filters": {
-				"report_type": "Balance Sheet",
-				"company": doc.name,
-				'group_or_ledger': "Ledger"
-			}
-		}
-	}
+			filters: filters
+		};
+	});
 }

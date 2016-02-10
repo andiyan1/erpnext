@@ -1,11 +1,11 @@
-// Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+// Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 // License: GNU General Public License v3. See license.txt
 
 cur_frm.add_fetch("time_log", "activity_type", "activity_type");
-cur_frm.add_fetch("time_log", "owner", "created_by");
+cur_frm.add_fetch("time_log", "billing_amount", "billing_amount");
 cur_frm.add_fetch("time_log", "hours", "hours");
 
-cur_frm.set_query("time_log", "time_log_batch_details", function(doc) {
+cur_frm.set_query("time_log", "time_logs", function(doc) {
 	return {
 		query: "erpnext.projects.utils.get_time_log_list",
 		filters: {
@@ -32,7 +32,36 @@ $.extend(cur_frm.cscript, {
 	make_invoice: function() {
 		frappe.model.open_mapped_doc({
 			method: "erpnext.projects.doctype.time_log_batch.time_log_batch.make_sales_invoice",
-			source_name: cur_frm.doc.name
+			frm: cur_frm
 		});
 	}
 });
+
+frappe.ui.form.on("Time Log Batch Detail", "time_log", function(frm) {
+	calculate_time_and_amount(frm);
+});
+
+frappe.ui.form.on("Time Log Batch Detail", "time_logs_remove", function(frm) {
+	calculate_time_and_amount(frm);
+});
+
+frappe.ui.form.on("Time Log Batch", "onload", function(frm) {
+	if (frm.doc.__islocal && frm.doc.time_logs) {
+		calculate_time_and_amount(frm);
+	}
+});
+
+var calculate_time_and_amount = function(frm) {
+	var tl = frm.doc.time_logs || [];
+	total_hr = 0;
+	total_amt = 0;
+	for(var i=0; i<tl.length; i++) {
+		if (tl[i].time_log) {
+			total_hr += tl[i].hours;
+			total_amt += tl[i].billing_amount;
+		}
+	}
+	cur_frm.set_value("total_hours", total_hr);
+	cur_frm.set_value("total_billing_amount", total_amt);
+	
+}

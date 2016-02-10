@@ -1,5 +1,6 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # License: GNU General Public License v3. See license.txt
+from __future__ import unicode_literals
 
 import frappe
 from frappe import _
@@ -36,10 +37,10 @@ def execute(filters=None):
 
 def get_columns():
 	return[
-			"Item:Link/Item:120", "Item name:Data:120", "Description::160",
-			"Minimum Inventory Level:Float:160", "Lead Time Days:Float:120", "Consumed:Float:120",
-			"Delivered:Float:120", "Total Outgoing:Float:120", "Avg Daily Outgoing:Float:160",
-			"Reorder Level:Float:120"
+			_("Item") + ":Link/Item:120", _("Item Name") + ":Data:120", _("Description") + "::160",
+			_("Minimum Inventory Level") + ":Float:160", _("Lead Time Days") + ":Float:120", _("Consumed") + ":Float:120",
+			_("Delivered") + ":Float:120", _("Total Outgoing") + ":Float:120", _("Avg Daily Outgoing") + ":Float:160",
+			_("Reorder Level") + ":Float:120"
 	]
 
 def get_item_info():
@@ -71,7 +72,7 @@ def get_delivered_items(condition):
 	si_items = frappe.db.sql("""select si_item.item_name, sum(si_item.qty) as si_qty
 		from `tabSales Invoice` si, `tabSales Invoice Item` si_item
 		where si.name = si_item.parent and si.docstatus = 1 and
-		ifnull(si.update_stock, 0) = 1 and ifnull(si.is_pos, 0) = 1 %s
+		si.update_stock = 1 and si.is_pos = 1 %s
 		group by si_item.item_name""" % (condition), as_dict=1)
 
 	dn_item_map = {}

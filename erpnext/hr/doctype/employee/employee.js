@@ -1,4 +1,4 @@
-// Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+// Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 // License: GNU General Public License v3. See license.txt
 
 frappe.provide("erpnext.hr");
@@ -11,34 +11,23 @@ erpnext.hr.EmployeeController = frappe.ui.form.Controller.extend({
 	},
 
 	onload: function() {
-		this.setup_leave_approver_select();
-		this.frm.toggle_display(["esic_card_no", "gratuity_lic_id", "pan_number", "pf_number"],
-			frappe.boot.sysdefaults.country==="India");
 		if(this.frm.doc.__islocal) this.frm.set_value("employee_name", "");
+		this.frm.set_query("leave_approver", "leave_approvers", function() {
+			return {
+				filters: [["UserRole", "role", "=", "Leave Approver"]]
+			}
+		});
 	},
 
 	refresh: function() {
 		var me = this;
 		erpnext.toggle_naming_series();
-		if(!this.frm.doc.__islocal && !this.frm.doc.salary_structure_exists) {
-			cur_frm.add_custom_button(__('Make Salary Structure'), function() {
-				me.make_salary_structure(this); });
+		if(!this.frm.doc.__islocal && this.frm.doc.__onload &&
+			!this.frm.doc.__onload.salary_structure_exists) {
+				cur_frm.add_custom_button(__('Salary Structure'), function() {
+					me.make_salary_structure(this); }, __("Make"));
+				cur_frm.page.set_inner_btn_group_as_primary(__("Make"));
 		}
-	},
-
-	setup_leave_approver_select: function() {
-		var me = this;
-		return this.frm.call({
-			method: "erpnext.hr.utils.get_leave_approver_list",
-			callback: function(r) {
-				var df = frappe.meta.get_docfield("Employee Leave Approver", "leave_approver",
-					me.frm.doc.name);
-				df.options = $.map(r.message, function(user) {
-					return {value: user, label: frappe.user_info(user).fullname};
-				});
-				me.frm.fields_dict.employee_leave_approvers.refresh();
-			}
-		});
 	},
 
 	date_of_birth: function() {
@@ -60,7 +49,7 @@ erpnext.hr.EmployeeController = frappe.ui.form.Controller.extend({
 	make_salary_structure: function(btn) {
 		frappe.model.open_mapped_doc({
 			method: "erpnext.hr.doctype.employee.employee.make_salary_structure",
-			source_name: cur_frm.doc.name
+			frm: cur_frm
 		});
 	}
 });

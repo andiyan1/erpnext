@@ -1,4 +1,4 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # License: GNU General Public License v3. See license.txt
 
 from __future__ import unicode_literals
@@ -18,14 +18,14 @@ data_map = {
 
 	# Accounts
 	"Account": {
-		"columns": ["name", "parent_account", "lft", "rgt", "report_type", 
-			"company", "group_or_ledger"],
+		"columns": ["name", "parent_account", "lft", "rgt", "report_type",
+			"company", "is_group"],
 		"conditions": ["docstatus < 2"],
 		"order_by": "lft",
 		"links": {
 			"company": ["Company", "name"],
 		}
-		
+
 	},
 	"Cost Center": {
 		"columns": ["name", "lft", "rgt"],
@@ -33,7 +33,7 @@ data_map = {
 		"order_by": "lft"
 	},
 	"GL Entry": {
-		"columns": ["name", "account", "posting_date", "cost_center", "debit", "credit", 
+		"columns": ["name", "account", "posting_date", "cost_center", "debit", "credit",
 			"is_opening", "company", "voucher_type", "voucher_no", "remarks"],
 		"order_by": "posting_date, account",
 		"links": {
@@ -45,9 +45,8 @@ data_map = {
 
 	# Stock
 	"Item": {
-		"columns": ["name", "if(item_name=name, '', item_name) as item_name", "description", 
-			"item_group as parent_item_group", "stock_uom", "brand", "valuation_method", 
-			"re_order_level", "re_order_qty"],
+		"columns": ["name", "if(item_name=name, '', item_name) as item_name", "description",
+			"item_group as parent_item_group", "stock_uom", "brand", "valuation_method"],
 		# "conditions": ["docstatus < 2"],
 		"order_by": "name",
 		"links": {
@@ -76,9 +75,10 @@ data_map = {
 		"order_by": "name"
 	},
 	"Stock Ledger Entry": {
-		"columns": ["name", "posting_date", "posting_time", "item_code", "warehouse", 
+		"columns": ["name", "posting_date", "posting_time", "item_code", "warehouse",
 			"actual_qty as qty", "voucher_type", "voucher_no", "project",
-			"ifnull(incoming_rate,0) as incoming_rate", "stock_uom", "serial_no"],
+			"incoming_rate as incoming_rate", "stock_uom", "serial_no",
+			"qty_after_transaction", "valuation_rate"],
 		"order_by": "posting_date, posting_time, name",
 		"links": {
 			"item_code": ["Item", "name"],
@@ -98,44 +98,44 @@ data_map = {
 		"order_by": "posting_date, posting_time, name",
 	},
 	"Production Order": {
-		"columns": ["name", "production_item as item_code", 
-			"(ifnull(qty, 0) - ifnull(produced_qty, 0)) as qty", 
+		"columns": ["name", "production_item as item_code",
+			"(qty - produced_qty) as qty",
 			"fg_warehouse as warehouse"],
 		"conditions": ["docstatus=1", "status != 'Stopped'", "ifnull(fg_warehouse, '')!=''",
-			"ifnull(qty, 0) > ifnull(produced_qty, 0)"],
+			"qty > produced_qty"],
 		"links": {
 			"item_code": ["Item", "name"],
 			"warehouse": ["Warehouse", "name"]
 		},
 	},
 	"Material Request Item": {
-		"columns": ["item.name as name", "item_code", "warehouse", 
-			"(ifnull(qty, 0) - ifnull(ordered_qty, 0)) as qty"],
+		"columns": ["item.name as name", "item_code", "warehouse",
+			"(qty - ordered_qty) as qty"],
 		"from": "`tabMaterial Request Item` item, `tabMaterial Request` main",
 		"conditions": ["item.parent = main.name", "main.docstatus=1", "main.status != 'Stopped'",
-			"ifnull(warehouse, '')!=''", "ifnull(qty, 0) > ifnull(ordered_qty, 0)"],
+			"ifnull(warehouse, '')!=''", "qty > ordered_qty"],
 		"links": {
 			"item_code": ["Item", "name"],
 			"warehouse": ["Warehouse", "name"]
 		},
 	},
 	"Purchase Order Item": {
-		"columns": ["item.name as name", "item_code", "warehouse", 
-			"(ifnull(qty, 0) - ifnull(received_qty, 0)) as qty"],
+		"columns": ["item.name as name", "item_code", "warehouse",
+			"(qty - received_qty) as qty"],
 		"from": "`tabPurchase Order Item` item, `tabPurchase Order` main",
-		"conditions": ["item.parent = main.name", "main.docstatus=1", "main.status != 'Stopped'", 
-			"ifnull(warehouse, '')!=''", "ifnull(qty, 0) > ifnull(received_qty, 0)"],
+		"conditions": ["item.parent = main.name", "main.docstatus=1", "main.status != 'Stopped'",
+			"ifnull(warehouse, '')!=''", "qty > received_qty"],
 		"links": {
 			"item_code": ["Item", "name"],
 			"warehouse": ["Warehouse", "name"]
 		},
 	},
-	
+
 	"Sales Order Item": {
-		"columns": ["item.name as name", "item_code", "(ifnull(qty, 0) - ifnull(delivered_qty, 0)) as qty", "warehouse"],
+		"columns": ["item.name as name", "item_code", "(qty - delivered_qty) as qty", "warehouse"],
 		"from": "`tabSales Order Item` item, `tabSales Order` main",
-		"conditions": ["item.parent = main.name", "main.docstatus=1", "main.status != 'Stopped'", 
-			"ifnull(warehouse, '')!=''", "ifnull(qty, 0) > ifnull(delivered_qty, 0)"],
+		"conditions": ["item.parent = main.name", "main.docstatus=1", "main.status != 'Stopped'",
+			"ifnull(warehouse, '')!=''", "qty > delivered_qty"],
 		"links": {
 			"item_code": ["Item", "name"],
 			"warehouse": ["Warehouse", "name"]
@@ -144,7 +144,7 @@ data_map = {
 
 	# Sales
 	"Customer": {
-		"columns": ["name", "if(customer_name=name, '', customer_name) as customer_name", 
+		"columns": ["name", "if(customer_name=name, '', customer_name) as customer_name",
 			"customer_group as parent_customer_group", "territory as parent_territory"],
 		"conditions": ["docstatus < 2"],
 		"order_by": "name",
@@ -173,7 +173,7 @@ data_map = {
 		}
 	},
 	"Sales Invoice Item": {
-		"columns": ["name", "parent", "item_code", "qty", "base_amount"],
+		"columns": ["name", "parent", "item_code", "qty", "base_net_amount"],
 		"conditions": ["docstatus=1", "ifnull(parent, '')!=''"],
 		"order_by": "parent",
 		"links": {
@@ -191,7 +191,7 @@ data_map = {
 		}
 	},
 	"Sales Order Item[Sales Analytics]": {
-		"columns": ["name", "parent", "item_code", "qty", "base_amount"],
+		"columns": ["name", "parent", "item_code", "qty", "base_net_amount"],
 		"conditions": ["docstatus=1", "ifnull(parent, '')!=''"],
 		"order_by": "parent",
 		"links": {
@@ -209,7 +209,7 @@ data_map = {
 		}
 	},
 	"Delivery Note Item[Sales Analytics]": {
-		"columns": ["name", "parent", "item_code", "qty", "base_amount"],
+		"columns": ["name", "parent", "item_code", "qty", "base_net_amount"],
 		"conditions": ["docstatus=1", "ifnull(parent, '')!=''"],
 		"order_by": "parent",
 		"links": {
@@ -218,7 +218,7 @@ data_map = {
 		}
 	},
 	"Supplier": {
-		"columns": ["name", "if(supplier_name=name, '', supplier_name) as supplier_name", 
+		"columns": ["name", "if(supplier_name=name, '', supplier_name) as supplier_name",
 			"supplier_type as parent_supplier_type"],
 		"conditions": ["docstatus < 2"],
 		"order_by": "name",
@@ -241,7 +241,7 @@ data_map = {
 		}
 	},
 	"Purchase Invoice Item": {
-		"columns": ["name", "parent", "item_code", "qty", "base_amount"],
+		"columns": ["name", "parent", "item_code", "qty", "base_net_amount"],
 		"conditions": ["docstatus=1", "ifnull(parent, '')!=''"],
 		"order_by": "parent",
 		"links": {
@@ -259,7 +259,7 @@ data_map = {
 		}
 	},
 	"Purchase Order Item[Purchase Analytics]": {
-		"columns": ["name", "parent", "item_code", "qty", "base_amount"],
+		"columns": ["name", "parent", "item_code", "qty", "base_net_amount"],
 		"conditions": ["docstatus=1", "ifnull(parent, '')!=''"],
 		"order_by": "parent",
 		"links": {
@@ -277,7 +277,7 @@ data_map = {
 		}
 	},
 	"Purchase Receipt Item[Purchase Analytics]": {
-		"columns": ["name", "parent", "item_code", "qty", "base_amount"],
+		"columns": ["name", "parent", "item_code", "qty", "base_net_amount"],
 		"conditions": ["docstatus=1", "ifnull(parent, '')!=''"],
 		"order_by": "parent",
 		"links": {
@@ -286,10 +286,10 @@ data_map = {
 		}
 	},
 	# Support
-	"Support Ticket": {
+	"Issue": {
 		"columns": ["name","status","creation","resolution_date","first_responded_on"],
 		"conditions": ["docstatus < 2"],
 		"order_by": "creation"
 	}
-	
+
 }

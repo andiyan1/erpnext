@@ -1,10 +1,12 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # License: GNU General Public License v3. See license.txt
+from __future__ import unicode_literals
 
 import frappe
 import unittest
 
 from erpnext.hr.doctype.leave_application.leave_application import LeaveDayBlockedError, OverlapError
+from frappe.permissions import clear_user_permissions_for_doctype
 
 test_dependencies = ["Leave Allocation", "Leave Block List"]
 
@@ -43,6 +45,10 @@ _test_records = [
 
 
 class TestLeaveApplication(unittest.TestCase):
+	def setUp(self):
+		for dt in ["Leave Application", "Leave Allocation", "Salary Slip"]:
+			frappe.db.sql("delete from `tab%s`" % dt)
+
 	def tearDown(self):
 		frappe.set_user("Administrator")
 
@@ -60,11 +66,23 @@ class TestLeaveApplication(unittest.TestCase):
 		temp_session_user = frappe.session.user
 		frappe.set_user("Administrator")
 		employee = frappe.get_doc("Employee", employee)
-		employee.append("employee_leave_approvers", {
+		employee.append("leave_approvers", {
 			"doctype": "Employee Leave Approver",
 			"leave_approver": leave_approver
 		})
 		employee.save()
+		frappe.set_user(temp_session_user)
+
+	def _remove_employee_leave_approver(self, employee, leave_approver):
+		temp_session_user = frappe.session.user
+		frappe.set_user("Administrator")
+		employee = frappe.get_doc("Employee", employee)
+		d = employee.get("leave_approvers", {
+			"leave_approver": leave_approver
+		})
+		if d:
+			employee.get("leave_approvers").remove(d[0])
+			employee.save()
 		frappe.set_user(temp_session_user)
 
 	def get_application(self, doc):
@@ -78,9 +96,13 @@ class TestLeaveApplication(unittest.TestCase):
 
 		from frappe.utils.user import add_role
 		add_role("test1@example.com", "HR User")
+		add_role("test1@example.com", "Leave Approver")
+		clear_user_permissions_for_doctype("Employee")
 
 		frappe.db.set_value("Department", "_Test Department",
 			"leave_block_list", "_Test Leave Block List")
+
+		make_allocation_record()
 
 		application = self.get_application(_test_records[0])
 		application.insert()
@@ -104,12 +126,69 @@ class TestLeaveApplication(unittest.TestCase):
 		add_role("test2@example.com", "Leave Approver")
 
 		frappe.set_user("test@example.com")
+
+		make_allocation_record()
+
 		application = self.get_application(_test_records[0])
 		application.leave_approver = "test2@example.com"
 		application.insert()
 
 		application = self.get_application(_test_records[0])
 		application.leave_approver = "test2@example.com"
+		self.assertRaises(OverlapError, application.insert)
+
+	def test_overlap_with_half_day(self):
+		self._clear_roles()
+		self._clear_applications()
+
+		from frappe.utils.user import add_role
+		add_role("test@example.com", "Employee")
+		add_role("test2@example.com", "Leave Approver")
+
+		frappe.set_user("test@example.com")
+
+		make_allocation_record()
+
+		# allow second half-day on the same day if available
+		application = self.get_application(_test_records[0])
+		application.leave_approver = "test2@example.com"
+		application.half_day = 1
+		application.insert()
+
+		# allow second half-day on the same day if available
+		application = self.get_application(_test_records[0])
+		application.leave_approver = "test2@example.com"
+		application.half_day = 1
+		application.insert()
+
+		application = self.get_application(_test_records[0])
+		application.leave_approver = "test2@example.com"
+		application.half_day = 1
+
+		self.assertRaises(OverlapError, application.insert)
+
+	def test_overlap_with_half_day_not_applicable(self):
+		self._clear_roles()
+		self._clear_applications()
+
+		from frappe.utils.user import add_role
+		add_role("test@example.com", "Employee")
+		add_role("test2@example.com", "Leave Approver")
+
+		frappe.set_user("test@example.com")
+
+		make_allocation_record()
+
+		# allow second half-day on the same day if available
+		application = self.get_application(_test_records[0])
+		application.leave_approver = "test2@example.com"
+		application.insert()
+
+		# allow second half-day on the same day if available
+		application = self.get_application(_test_records[0])
+		application.leave_approver = "test2@example.com"
+		application.half_day = 1
+
 		self.assertRaises(OverlapError, application.insert)
 
 	def test_global_block_list(self):
@@ -119,6 +198,8 @@ class TestLeaveApplication(unittest.TestCase):
 		add_role("test1@example.com", "Employee")
 		add_role("test@example.com", "Leave Approver")
 		self._add_employee_leave_approver("_T-Employee-0002", "test@example.com")
+
+		make_allocation_record(employee="_T-Employee-0002")
 
 		application = self.get_application(_test_records[1])
 		application.leave_approver = "test@example.com"
@@ -143,6 +224,7 @@ class TestLeaveApplication(unittest.TestCase):
 
 		from frappe.utils.user import add_role
 		add_role("test@example.com", "Employee")
+		add_role("test1@example.com", "HR User")
 		add_role("test1@example.com", "Leave Approver")
 		add_role("test2@example.com", "Leave Approver")
 
@@ -154,8 +236,13 @@ class TestLeaveApplication(unittest.TestCase):
 	def _test_leave_approval_basic_case(self):
 		self._clear_applications()
 
+		self._add_employee_leave_approver("_T-Employee-0001", "test1@example.com")
+
 		# create leave application as Employee
 		frappe.set_user("test@example.com")
+
+		make_allocation_record()
+
 		application = self.get_application(_test_records[0])
 		application.leave_approver = "test1@example.com"
 		application.insert()
@@ -175,8 +262,10 @@ class TestLeaveApplication(unittest.TestCase):
 		# add a different leave approver in the employee's list
 		# should raise exception if not a valid leave approver
 		self._add_employee_leave_approver("_T-Employee-0001", "test2@example.com")
+		self._remove_employee_leave_approver("_T-Employee-0001", "test1@example.com")
 
-		# TODO - add test2@example.com leave approver in employee's leave approvers list
+		make_allocation_record()
+
 		application = self.get_application(_test_records[0])
 		frappe.set_user("test@example.com")
 
@@ -193,6 +282,9 @@ class TestLeaveApplication(unittest.TestCase):
 		# create leave application as employee
 		# but submit as invalid leave approver - should raise exception
 		frappe.set_user("test@example.com")
+
+		make_allocation_record()
+
 		application = self.get_application(_test_records[0])
 		application.leave_approver = "test2@example.com"
 		application.insert()
@@ -213,6 +305,9 @@ class TestLeaveApplication(unittest.TestCase):
 		frappe.db.set_value("Employee", "_T-Employee-0001", "department", None)
 
 		frappe.set_user("test@example.com")
+
+		make_allocation_record()
+
 		application = self.get_application(_test_records[0])
 		application.leave_approver = "test2@example.com"
 		application.insert()
@@ -228,3 +323,18 @@ class TestLeaveApplication(unittest.TestCase):
 			"_T-Employee-0001")
 
 		frappe.db.set_value("Employee", "_T-Employee-0001", "department", original_department)
+
+def make_allocation_record(employee=None, leave_type=None):
+	frappe.db.sql("delete from `tabLeave Allocation`")
+
+	allocation = frappe.get_doc({
+		"doctype": "Leave Allocation",
+		"employee": employee or "_T-Employee-0001",
+		"leave_type": leave_type or "_Test Leave Type",
+		"from_date": "2013-01-01",
+		"to_date": "2015-12-31",
+		"new_leaves_allocated": 30
+	})
+
+	allocation.insert(ignore_permissions=True)
+	allocation.submit()

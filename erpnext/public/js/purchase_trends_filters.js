@@ -1,4 +1,4 @@
-// Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+// Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 // License: GNU General Public License v3. See license.txt
 
 var get_filters = function(){
@@ -7,21 +7,36 @@ var get_filters = function(){
 			"fieldname":"period",
 			"label": __("Period"),
 			"fieldtype": "Select",
-			"options": ["Monthly", "Quarterly", "Half-Yearly", "Yearly"].join("\n"),
+			"options": [
+				{ "value": "Monthly", "label": __("Monthly") },
+				{ "value": "Quarterly", "label": __("Quarterly") },
+				{ "value": "Half-Yearly", "label": __("Half-Yearly") },
+				{ "value": "Yearly", "label": __("Yearly") }
+			],
 			"default": "Monthly"
 		},
 		{
 			"fieldname":"based_on",
 			"label": __("Based On"),
 			"fieldtype": "Select",
-			"options": ["Item", "Item Group", "Supplier", "Supplier Type", "Project"].join("\n"),
+			"options": [
+				{ "value": "Item", "label": __("Item") },
+				{ "value": "Item Group", "label": __("Item Group") },
+				{ "value": "Supplier", "label": __("Supplier") },
+				{ "value": "Supplier Type", "label": __("Supplier Type") },
+				{ "value": "Project", "label": __("Project") }
+			],
 			"default": "Item"
 		},
 		{
 			"fieldname":"group_by",
 			"label": __("Group By"),
 			"fieldtype": "Select",
-			"options": ["Item", "Supplier"].join("\n"),
+			"options": [
+				"",
+				{ "value": "Item", "label": __("Item") },
+				{ "value": "Supplier", "label": __("Supplier") }
+			],
 			"default": ""
 		},
 		{
@@ -36,7 +51,7 @@ var get_filters = function(){
 			"label": __("Company"),
 			"fieldtype": "Link",
 			"options": "Company",
-			"default": frappe.defaults.get_user_default("company")
+			"default": frappe.defaults.get_user_default("Company")
 		},
 	];
 }

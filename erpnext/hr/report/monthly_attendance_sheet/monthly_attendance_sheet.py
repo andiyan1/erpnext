@@ -1,10 +1,11 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # License: GNU General Public License v3. See license.txt
 
 from __future__ import unicode_literals
 import frappe
 from frappe.utils import cstr, cint
 from frappe import msgprint, _
+from calendar import monthrange
 
 def execute(filters=None):
 	if not filters: filters = {}
@@ -25,8 +26,8 @@ def execute(filters=None):
 
 		total_p = total_a = 0.0
 		for day in range(filters["total_days_in_month"]):
-			status = att_map.get(emp).get(day + 1, "Absent")
-			status_map = {"Present": "P", "Absent": "A", "Half Day": "HD"}
+			status = att_map.get(emp).get(day + 1, "None")
+			status_map = {"Present": "P", "Absent": "A", "Half Day": "H", "None":" "}
 			row.append(status_map[status])
 
 			if status == "Present":
@@ -45,15 +46,15 @@ def execute(filters=None):
 
 def get_columns(filters):
 	columns = [
-		"Employee:Link/Employee:120", "Employee Name::140", "Branch:Link/Branch:120",
-		"Department:Link/Department:120", "Designation:Link/Designation:120",
-		 "Company:Link/Company:120"
+		_("Employee") + ":Link/Employee:120", _("Employee Name") + "::140", _("Branch")+ ":Link/Branch:120",
+		_("Department") + ":Link/Department:120", _("Designation") + ":Link/Designation:120",
+		 _("Company") + ":Link/Company:120"
 	]
 
 	for day in range(filters["total_days_in_month"]):
 		columns.append(cstr(day+1) +"::20")
 
-	columns += ["Total Present:Float:80", "Total Absent:Float:80"]
+	columns += [_("Total Present") + ":Float:80", _("Total Absent") + ":Float:80"]
 	return columns
 
 def get_attendance_list(conditions, filters):
@@ -73,11 +74,17 @@ def get_conditions(filters):
 		msgprint(_("Please select month and year"), raise_exception=1)
 
 	filters["month"] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov",
-		"Dec"].index(filters["month"]) + 1
+		"Dec"].index(filters.month) + 1
 
-	from calendar import monthrange
-	filters["total_days_in_month"] = monthrange(cint(filters["fiscal_year"].split("-")[-1]),
-		filters["month"])[1]
+	year_start_date, year_end_date = frappe.db.get_value("Fiscal Year", filters.fiscal_year, 
+		["year_start_date", "year_end_date"])
+		
+	if filters.month >= year_start_date.strftime("%m"):
+		year = year_start_date.strftime("%Y")
+	else:
+		year = year_end_date.strftime("%Y")
+	
+	filters["total_days_in_month"] = monthrange(cint(year), filters.month)[1]
 
 	conditions = " and month(att_date) = %(month)s and fiscal_year = %(fiscal_year)s"
 

@@ -1,4 +1,4 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # License: GNU General Public License v3. See license.txt
 
 from __future__ import unicode_literals
@@ -6,17 +6,19 @@ import frappe
 from frappe.model.mapper import get_mapped_doc
 
 from erpnext.controllers.buying_controller import BuyingController
-class SupplierQuotation(BuyingController):
-	tname = "Supplier Quotation Item"
-	fname = "quotation_items"
 
+form_grid_templates = {
+	"items": "templates/form_grid/item_grid.html"
+}
+
+class SupplierQuotation(BuyingController):
 	def validate(self):
 		super(SupplierQuotation, self).validate()
 
 		if not self.status:
 			self.status = "Draft"
 
-		from erpnext.utilities import validate_status
+		from erpnext.controllers.status_updater import validate_status
 		validate_status(self.status, ["Draft", "Submitted", "Stopped",
 			"Cancelled"])
 
@@ -34,7 +36,7 @@ class SupplierQuotation(BuyingController):
 		pass
 
 	def validate_with_previous_doc(self):
-		super(SupplierQuotation, self).validate_with_previous_doc(self.tname, {
+		super(SupplierQuotation, self).validate_with_previous_doc({
 			"Material Request": {
 				"ref_dn_field": "prevdoc_docname",
 				"compare_fields": [["company", "="]],
@@ -54,6 +56,7 @@ class SupplierQuotation(BuyingController):
 @frappe.whitelist()
 def make_purchase_order(source_name, target_doc=None):
 	def set_missing_values(source, target):
+		target.ignore_pricing_rule = 1
 		target.run_method("set_missing_values")
 		target.run_method("get_schedule_dates")
 		target.run_method("calculate_taxes_and_totals")

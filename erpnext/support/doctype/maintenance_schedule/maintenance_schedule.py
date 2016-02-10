@@ -1,37 +1,27 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # License: GNU General Public License v3. See license.txt
 
 from __future__ import unicode_literals
 import frappe
 
-from frappe.utils import add_days, getdate, cint
+from frappe.utils import add_days, getdate, cint, cstr
 
 from frappe import throw, _
 from erpnext.utilities.transaction_base import TransactionBase, delete_events
 from erpnext.stock.utils import get_valid_serial_nos
 
 class MaintenanceSchedule(TransactionBase):
-
-	def get_item_details(self, item_code):
-		item = frappe.db.sql("""select item_name, description from `tabItem`
-			where name=%s""", (item_code), as_dict=1)
-		ret = {
-			'item_name': item and item[0]['item_name'] or '',
-			'description' : item and item[0]['description'] or ''
-		}
-		return ret
-
 	def generate_schedule(self):
-		self.set('maintenance_schedule_detail', [])
+		self.set('schedules', [])
 		frappe.db.sql("""delete from `tabMaintenance Schedule Detail`
 			where parent=%s""", (self.name))
 		count = 1
-		for d in self.get('item_maintenance_detail'):
+		for d in self.get('items'):
 			self.validate_maintenance_detail()
 			s_list = []
 			s_list = self.create_schedule_list(d.start_date, d.end_date, d.no_of_visits, d.sales_person)
 			for i in range(d.no_of_visits):
-				child = self.append('maintenance_schedule_detail')
+				child = self.append('schedules')
 				child.item_code = d.item_code
 				child.item_name = d.item_name
 				child.scheduled_date = s_list[i].strftime('%Y-%m-%d')
@@ -40,18 +30,17 @@ class MaintenanceSchedule(TransactionBase):
 				child.idx = count
 				count = count + 1
 				child.sales_person = d.sales_person
-				child.save(1)
 
-		self.on_update()
+		self.save()
 
 	def on_submit(self):
-		if not self.get('maintenance_schedule_detail'):
+		if not self.get('schedules'):
 			throw(_("Please click on 'Generate Schedule' to get schedule"))
 		self.check_serial_no_added()
 		self.validate_schedule()
 
 		email_map = {}
-		for d in self.get('item_maintenance_detail'):
+		for d in self.get('items'):
 			if d.serial_no:
 				serial_nos = get_valid_serial_nos(d.serial_no)
 				self.validate_serial_no(serial_nos, d.start_date)
@@ -74,7 +63,7 @@ class MaintenanceSchedule(TransactionBase):
 						"owner": email_map[d.sales_person] or self.owner,
 						"subject": description,
 						"description": description,
-						"starts_on": key["scheduled_date"] + " 10:00:00",
+						"starts_on": cstr(key["scheduled_date"]) + " 10:00:00",
 						"event_type": "Private",
 						"ref_type": self.doctype,
 						"ref_name": self.name
@@ -122,7 +111,7 @@ class MaintenanceSchedule(TransactionBase):
 				# check global holiday list
 				holiday_list = frappe.db.sql("""select h.holiday_date from
 					`tabHoliday` h, `tabHoliday List` hl
-					where h.parent=hl.name and ifnull(hl.is_default, 0) = 1
+					where h.parent=hl.name and hl.is_default = 1
 					and hl.fiscal_year=%s""", fy_details[0])
 
 			if not validated and holiday_list:
@@ -133,46 +122,28 @@ class MaintenanceSchedule(TransactionBase):
 
 		return schedule_date
 
-	def validate_period(self, arg):
-		args = eval(arg)
-		if getdate(args['start_date']) >= getdate(args['end_date']):
-			throw(_("Start date should be less than end date."))
+	def validate_dates_with_periodicity(self):
+		for d in self.get("items"):
+			if d.start_date and d.end_date and d.periodicity and d.periodicity!="Random":
+				date_diff = (getdate(d.end_date) - getdate(d.start_date)).days + 1
+				days_in_period = {
+					"Weekly": 7,
+					"Monthly": 30,
+					"Quarterly": 90,
+					"Half Yearly": 180,
+					"Yearly": 365
+				}
 
-		period = (getdate(args['end_date']) - getdate(args['start_date'])).days + 1
-
-		if (args['periodicity'] == 'Yearly' or args['periodicity'] == 'Half Yearly' or
-			args['periodicity'] == 'Quarterly') and period < 90:
-			throw(_("Period is too short"))
-		elif args['periodicity'] == 'Monthly' and period < 30:
-			throw(_("Period is too short"))
-		elif args['periodicity'] == 'Weekly' and period < 7:
-			throw(_("Period is too short"))
-
-	def get_no_of_visits(self, arg):
-		args = eval(arg)
-		self.validate_period(arg)
-		period = (getdate(args['end_date']) - getdate(args['start_date'])).days + 1
-		count = 0
-
-		if args['periodicity'] == 'Weekly':
-			count = period/7
-		elif args['periodicity'] == 'Monthly':
-			count = period/30
-		elif args['periodicity'] == 'Quarterly':
-			count = period/91
-		elif args['periodicity'] == 'Half Yearly':
-			count = period/182
-		elif args['periodicity'] == 'Yearly':
-			count = period/365
-
-		ret = {'no_of_visits' : count}
-		return ret
+				if date_diff < days_in_period[d.periodicity]:
+					throw(_("Row {0}: To set {1} periodicity, difference between from and to date \
+						must be greater than or equal to {2}")
+						.format(d.idx, d.periodicity, days_in_period[d.periodicity]))
 
 	def validate_maintenance_detail(self):
-		if not self.get('item_maintenance_detail'):
+		if not self.get('items'):
 			throw(_("Please enter Maintaince Details first"))
 
-		for d in self.get('item_maintenance_detail'):
+		for d in self.get('items'):
 			if not d.item_code:
 				throw(_("Please select item code"))
 			elif not d.start_date or not d.end_date:
@@ -186,7 +157,7 @@ class MaintenanceSchedule(TransactionBase):
 				throw(_("Start date should be less than end date for Item {0}").format(d.item_code))
 
 	def validate_sales_order(self):
-		for d in self.get('item_maintenance_detail'):
+		for d in self.get('items'):
 			if d.prevdoc_docname:
 				chk = frappe.db.sql("""select ms.name from `tabMaintenance Schedule` ms,
 					`tabMaintenance Schedule Item` msi where msi.parent=ms.name and
@@ -196,6 +167,7 @@ class MaintenanceSchedule(TransactionBase):
 
 	def validate(self):
 		self.validate_maintenance_detail()
+		self.validate_dates_with_periodicity()
 		self.validate_sales_order()
 
 	def on_update(self):
@@ -210,7 +182,10 @@ class MaintenanceSchedule(TransactionBase):
 	def validate_serial_no(self, serial_nos, amc_start_date):
 		for serial_no in serial_nos:
 			sr_details = frappe.db.get_value("Serial No", serial_no,
-				["warranty_expiry_date", "amc_expiry_date", "status", "delivery_date"], as_dict=1)
+				["warranty_expiry_date", "amc_expiry_date", "warehouse", "delivery_date"], as_dict=1)
+
+			if not sr_details:
+				frappe.throw(_("Serial No {0} not found").format(serial_no))
 
 			if sr_details.warranty_expiry_date and sr_details.warranty_expiry_date>=amc_start_date:
 				throw(_("Serial No {0} is under warranty upto {1}").format(serial_no, sr_details.warranty_expiry_date))
@@ -218,18 +193,19 @@ class MaintenanceSchedule(TransactionBase):
 			if sr_details.amc_expiry_date and sr_details.amc_expiry_date >= amc_start_date:
 				throw(_("Serial No {0} is under maintenance contract upto {1}").format(serial_no, sr_details.amc_start_date))
 
-			if sr_details.status=="Delivered" and sr_details.delivery_date and \
+			if not sr_details.warehouse and sr_details.delivery_date and \
 				sr_details.delivery_date >= amc_start_date:
-					throw(_("Maintenance start date can not be before delivery date for Serial No {0}").format(serial_no))
+					throw(_("Maintenance start date can not be before delivery date for Serial No {0}")
+						.format(serial_no))
 
 	def validate_schedule(self):
 		item_lst1 =[]
 		item_lst2 =[]
-		for d in self.get('item_maintenance_detail'):
+		for d in self.get('items'):
 			if d.item_code not in item_lst1:
 				item_lst1.append(d.item_code)
 
-		for m in self.get('maintenance_schedule_detail'):
+		for m in self.get('schedules'):
 			if m.item_code not in item_lst2:
 				item_lst2.append(m.item_code)
 
@@ -242,17 +218,17 @@ class MaintenanceSchedule(TransactionBase):
 
 	def check_serial_no_added(self):
 		serial_present =[]
-		for d in self.get('item_maintenance_detail'):
+		for d in self.get('items'):
 			if d.serial_no:
 				serial_present.append(d.item_code)
 
-		for m in self.get('maintenance_schedule_detail'):
+		for m in self.get('schedules'):
 			if serial_present:
 				if m.item_code in serial_present and not m.serial_no:
 					throw(_("Please click on 'Generate Schedule' to fetch Serial No added for Item {0}").format(m.item_code))
 
 	def on_cancel(self):
-		for d in self.get('item_maintenance_detail'):
+		for d in self.get('items'):
 			if d.serial_no:
 				serial_nos = get_valid_serial_nos(d.serial_no)
 				self.update_amc_date(serial_nos)

@@ -1,4 +1,4 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # License: GNU General Public License v3. See license.txt
 
 from __future__ import unicode_literals
@@ -10,20 +10,20 @@ def get_columns(filters, trans):
 	validate_filters(filters)
 
 	# get conditions for based_on filter cond
-	based_on_details = based_wise_colums_query(filters.get("based_on"), trans)
+	based_on_details = based_wise_columns_query(filters.get("based_on"), trans)
 	# get conditions for periodic filter cond
-	period_cols, period_select = period_wise_colums_query(filters, trans)
+	period_cols, period_select = period_wise_columns_query(filters, trans)
 	# get conditions for grouping filter cond
 	group_by_cols = group_wise_column(filters.get("group_by"))
 
-	columns = based_on_details["based_on_cols"] + period_cols + ["Total(Qty):Float:120", "Total(Amt):Currency:120"]
+	columns = based_on_details["based_on_cols"] + period_cols + [_("Total(Qty)") + ":Float:120", _("Total(Amt)") + ":Currency:120"]
 	if group_by_cols:
 		columns = based_on_details["based_on_cols"] + group_by_cols + period_cols + \
-			["Total(Qty):Float:120", "Total(Amt):Currency:120"]
+			[_("Total(Qty)") + ":Float:120", _("Total(Amt)") + ":Currency:120"]
 
 	conditions = {"based_on_select": based_on_details["based_on_select"], "period_wise_select": period_select,
 		"columns": columns, "group_by": based_on_details["based_on_group_by"], "grbc": group_by_cols, "trans": trans,
-		"addl_tables": based_on_details["addl_tables"]}
+		"addl_tables": based_on_details["addl_tables"], "addl_tables_relational_cond": based_on_details.get("addl_tables_relational_cond", "")}
 
 	return conditions
 
@@ -31,6 +31,9 @@ def validate_filters(filters):
 	for f in ["Fiscal Year", "Based On", "Period", "Company"]:
 		if not filters.get(f.lower().replace(" ", "_")):
 			frappe.throw(_("{0} is mandatory").format(f))
+
+	if not frappe.db.exists("Fiscal Year", filters.get("fiscal_year")):
+		frappe.throw(_("Fiscal Year: {0} does not exists").format(filters.get("fiscal_year")))
 
 	if filters.get("based_on") == filters.get("group_by"):
 		frappe.throw(_("'Based On' and 'Group By' can not be same"))
@@ -60,10 +63,10 @@ def get_data(filters, conditions):
 			inc = 1
 		data1 = frappe.db.sql(""" select %s from `tab%s` t1, `tab%s Item` t2 %s
 					where t2.parent = t1.name and t1.company = %s and t1.fiscal_year = %s and
-					t1.docstatus = 1 %s
+					t1.docstatus = 1 %s %s
 					group by %s
 				""" % (query_details,  conditions["trans"],  conditions["trans"], conditions["addl_tables"], "%s",
-					"%s", cond, conditions["group_by"]), (filters.get("company"),
+					"%s", conditions.get("addl_tables_relational_cond"), cond, conditions["group_by"]), (filters.get("company"),
 					filters["fiscal_year"]),as_list=1)
 
 		for d in range(len(data1)):
@@ -75,10 +78,10 @@ def get_data(filters, conditions):
 			#to get distinct value of col specified by group_by in filter
 			row = frappe.db.sql("""select DISTINCT(%s) from `tab%s` t1, `tab%s Item` t2 %s
 						where t2.parent = t1.name and t1.company = %s and t1.fiscal_year = %s
-						and t1.docstatus = 1 and %s = %s
+						and t1.docstatus = 1 and %s = %s %s
 					""" %
 					(sel_col,  conditions["trans"],  conditions["trans"], conditions["addl_tables"],
-						"%s", "%s", conditions["group_by"], "%s"),
+						"%s", "%s", conditions["group_by"], "%s", conditions.get("addl_tables_relational_cond")),
 					(filters.get("company"), filters.get("fiscal_year"), data1[d][0]), as_list=1)
 
 			for i in range(len(row)):
@@ -87,15 +90,16 @@ def get_data(filters, conditions):
 				#get data for group_by filter
 				row1 = frappe.db.sql(""" select %s , %s from `tab%s` t1, `tab%s Item` t2 %s
 							where t2.parent = t1.name and t1.company = %s and t1.fiscal_year = %s
-							and t1.docstatus = 1 and %s = %s and %s = %s
+							and t1.docstatus = 1 and %s = %s and %s = %s %s
 						""" %
 						(sel_col, conditions["period_wise_select"], conditions["trans"],
 						 	conditions["trans"], conditions["addl_tables"], "%s", "%s", sel_col,
-							"%s", conditions["group_by"], "%s"),
+							"%s", conditions["group_by"], "%s", conditions.get("addl_tables_relational_cond")),
 						(filters.get("company"), filters.get("fiscal_year"), row[i][0],
 							data1[d][0]), as_list=1)
 
-				des[ind] = row[i]
+				des[ind] = row[i][0]
+
 				for j in range(1,len(conditions["columns"])-inc):
 					des[j+inc] = row1[0][j]
 
@@ -103,11 +107,11 @@ def get_data(filters, conditions):
 	else:
 		data = frappe.db.sql(""" select %s from `tab%s` t1, `tab%s Item` t2 %s
 					where t2.parent = t1.name and t1.company = %s and t1.fiscal_year = %s and
-					t1.docstatus = 1 %s
+					t1.docstatus = 1 %s %s
 					group by %s
 				""" %
 				(query_details, conditions["trans"], conditions["trans"], conditions["addl_tables"],
-					"%s", "%s", cond,conditions["group_by"]),
+					"%s", "%s", cond, conditions.get("addl_tables_relational_cond", ""), conditions["group_by"]),
 				(filters.get("company"), filters.get("fiscal_year")), as_list=1)
 
 	return data
@@ -115,7 +119,7 @@ def get_data(filters, conditions):
 def get_mon(dt):
 	return getdate(dt).strftime("%b")
 
-def period_wise_colums_query(filters, trans):
+def period_wise_columns_query(filters, trans):
 	query_details = ''
 	pwc = []
 	bet_dates = get_period_date_ranges(filters.get("period"), filters.get("fiscal_year"))
@@ -130,24 +134,24 @@ def period_wise_colums_query(filters, trans):
 			get_period_wise_columns(dt, filters.get("period"), pwc)
 			query_details = get_period_wise_query(dt, trans_date, query_details)
 	else:
-		pwc = [filters.get("fiscal_year") + " (Qty):Float:120",
-			filters.get("fiscal_year") + " (Amt):Currency:120"]
-		query_details = " SUM(t2.qty), SUM(t1.grand_total),"
+		pwc = [_(filters.get("fiscal_year")) + " ("+_("Qty") + "):Float:120",
+			_(filters.get("fiscal_year")) + " ("+ _("Amt") + "):Currency:120"]
+		query_details = " SUM(t2.qty), SUM(t2.base_net_amount),"
 
-	query_details += 'SUM(t2.qty), SUM(t1.grand_total)'
+	query_details += 'SUM(t2.qty), SUM(t2.base_net_amount)'
 	return pwc, query_details
 
 def get_period_wise_columns(bet_dates, period, pwc):
 	if period == 'Monthly':
-		pwc += [get_mon(bet_dates[0]) + " (Qty):Float:120",
-			get_mon(bet_dates[0]) + " (Amt):Currency:120"]
+		pwc += [_(get_mon(bet_dates[0])) + " (" + _("Qty") + "):Float:120",
+			_(get_mon(bet_dates[0])) + " (" + _("Amt") + "):Currency:120"]
 	else:
-		pwc += [get_mon(bet_dates[0]) + "-" + get_mon(bet_dates[1]) + " (Qty):Float:120",
-			get_mon(bet_dates[0]) + "-" + get_mon(bet_dates[1]) + " (Amt):Currency:120"]
+		pwc += [_(get_mon(bet_dates[0])) + "-" + _(get_mon(bet_dates[1])) + " (" + _("Qty") + "):Float:120",
+			_(get_mon(bet_dates[0])) + "-" + _(get_mon(bet_dates[1])) + " (" + _("Amt") + "):Currency:120"]
 
 def get_period_wise_query(bet_dates, trans_date, query_details):
 	query_details += """SUM(IF(t1.%(trans_date)s BETWEEN '%(sd)s' AND '%(ed)s', t2.qty, NULL)),
-					SUM(IF(t1.%(trans_date)s BETWEEN '%(sd)s' AND '%(ed)s', t1.grand_total, NULL)),
+					SUM(IF(t1.%(trans_date)s BETWEEN '%(sd)s' AND '%(ed)s', t2.base_net_amount, NULL)),
 				""" % {"trans_date": trans_date, "sd": bet_dates[0],"ed": bet_dates[1]}
 	return query_details
 
@@ -191,7 +195,7 @@ def get_period_month_ranges(period, fiscal_year):
 
 	return period_month_ranges
 
-def based_wise_colums_query(based_on, trans):
+def based_wise_columns_query(based_on, trans):
 	based_on_details = {}
 
 	# based_on_cols, based_on_select, based_on_group_by, addl_tables
@@ -210,7 +214,7 @@ def based_wise_colums_query(based_on, trans):
 	elif based_on == "Customer":
 		based_on_details["based_on_cols"] = ["Customer:Link/Customer:120", "Territory:Link/Territory:120"]
 		based_on_details["based_on_select"] = "t1.customer_name, t1.territory, "
-		based_on_details["based_on_group_by"] = 't1.customer_name'
+		based_on_details["based_on_group_by"] = 't1.customer'
 		based_on_details["addl_tables"] = ''
 
 	elif based_on == "Customer Group":
@@ -224,12 +228,14 @@ def based_wise_colums_query(based_on, trans):
 		based_on_details["based_on_select"] = "t1.supplier, t3.supplier_type,"
 		based_on_details["based_on_group_by"] = 't1.supplier'
 		based_on_details["addl_tables"] = ',`tabSupplier` t3'
+		based_on_details["addl_tables_relational_cond"] = " and t1.supplier = t3.name"
 
 	elif based_on == 'Supplier Type':
 		based_on_details["based_on_cols"] = ["Supplier Type:Link/Supplier Type:140"]
 		based_on_details["based_on_select"] = "t3.supplier_type,"
 		based_on_details["based_on_group_by"] = 't3.supplier_type'
-		based_on_details["addl_tables"] =',`tabSupplier` t3'
+		based_on_details["addl_tables"] = ',`tabSupplier` t3'
+		based_on_details["addl_tables_relational_cond"] = " and t1.supplier = t3.name"
 
 	elif based_on == "Territory":
 		based_on_details["based_on_cols"] = ["Territory:Link/Territory:120"]
